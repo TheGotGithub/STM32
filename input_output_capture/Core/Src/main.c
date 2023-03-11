@@ -48,7 +48,7 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 uint32_t InputCaptureBuffer[IC_BUFFER_SIZE];
 float averageRisingedgePeriod;
-uint32_t duty =500;
+uint32_t duty =990;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
