@@ -40,12 +40,22 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim5;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint32_t QEIReadRaw;
 uint16_t a;
+typedef struct _QEIStructure{
+	uint32_t data[2];
+	uint64_t timestamp[2];
+
+	float QEIPosition;//step
+	float QEIVelocity;//step/sec
+}QEIStructureTypedef;
+QEIStructureTypedef QEIData={0};
+uint64_t _micros=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -53,8 +63,10 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
-
+inline uint64_t micros();
+void QEIEncoderPositionVelocity_Update();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -92,8 +104,10 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_TIM3_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim3,TIM_CHANNEL_1|TIM_CHANNEL_2);
+  HAL_TIM_Base_Start(&htim5);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -105,6 +119,17 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  QEIReadRaw=__HAL_TIM_GET_COUNTER(&htim3);
 	  a=(QEIReadRaw/3071.0)*360.0;
+	  static uint32_t timestamp=0;
+	  if(HAL_GetTick()>timestamp){
+		  timestamp=HAL_GetTick()+500;
+		  //printf("Position = %ld\n",a);
+	  }
+	  static uint64_t timestamp2=0;
+	  uint64_t currentTime=micros();
+	  if(currentTime>timestamp2){
+		  timestamp2 = currentTime+100000;
+		  QEIEncoderPositionVelocity_Update();
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -176,7 +201,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 3071;
+  htim3.Init.Period = QEI_PERIOD-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
@@ -201,6 +226,51 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 0;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 4294967295;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
 
 }
 
@@ -271,7 +341,47 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+int _write(int file,char *ptr,int len)
+{
+	int i;
+	for(i=0;i<len;i++){
+		ITM_SendChar(*ptr++);
+	}
+	return len;
+}
+void QEIEncoderPositionVelocity_Update()
+{
+	//collect data
+	QEIData.timestamp[0]= micros();
+	uint32_t couterPosition = __HAL_TIM_GET_COUNTER(&htim3);
+	QEIData.data[0] = couterPosition ;
 
+	//calculation
+	QEIData.QEIPosition = couterPosition % 3072;
+
+	int32_t diffPosition = QEIData.data[0] - QEIData.data[1];
+	float difftime = (QEIData.timestamp[0]-QEIData.timestamp[1]);
+
+	//handle wrap-around
+	if(diffPosition > QEI_PERIOD>>1) diffPosition -= QEI_PERIOD;
+	if(diffPosition < -(QEI_PERIOD>>1)) diffPosition += QEI_PERIOD;
+
+
+	//calculate angular velocity in pulse per sec
+	QEIData.QEIVelocity = (diffPosition*1000000)/difftime;
+
+	QEIData.data[1]=QEIData.data[0];
+	QEIData.timestamp[1] = QEIData.timestamp[0];
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if(htim==&htim5){
+		_micros+=UINT32_MAX;
+	}
+}
+uint64_t micros(){
+	return __HAL_TIM_GET_COUNTER(&htim5)+_micros;
+}
 /* USER CODE END 4 */
 
 /**
