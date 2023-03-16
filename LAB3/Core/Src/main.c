@@ -46,13 +46,14 @@ DMA_HandleTypeDef hdma_tim2_ch1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-float MotorSetDuty = 1000;
+float MotorSetDuty = 100;
 float MotorReadRPM;
 uint8_t MotorSetRPM = 15;
 uint32_t InputCaptureBuffer[IC_BUFFER_SIZE];
 float avg;
 float debug;
 float KP=2.5;
+uint8_t ch=0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,12 +120,20 @@ int main(void)
 	while (1) {
 		static uint32_t timestamp = 0;
 		if (HAL_GetTick() >= timestamp) {
-			timestamp = HAL_GetTick() + 10;
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,RTP_C(MotorReadRPM)+MotorSetDuty);
+			timestamp = HAL_GetTick()+5;
 			avg = IC_Calc_Period();
 			MotorReadRPM=ToRPM(avg);
-			debug=RTP_C(MotorSetRPM-MotorReadRPM);
-			Control(MotorSetRPM,MotorReadRPM);
+			switch(ch){
+			case 0:__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,MotorSetDuty*10);
+				break;
+			case 1:	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,RTP_C(MotorReadRPM)+MotorSetDuty);
+					debug=RTP_C(MotorSetRPM-MotorReadRPM);
+					Control(MotorSetRPM,MotorReadRPM);
+				break;
+			}
+
+			//__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,500);
+
 		}
     /* USER CODE END WHILE */
 
@@ -416,7 +425,7 @@ float ToRPM(float sum){
 	return sum;
 }
 float RTP_C(float IN_rpm){
-	return (IN_rpm/22)*1000;
+	return (IN_rpm/22.0)*1000.0;
 }
 void Control(uint8_t set,float error){
 	MotorSetDuty=(RTP_C(MotorSetRPM-MotorReadRPM))*KP;
