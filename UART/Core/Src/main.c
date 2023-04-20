@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdio.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,17 +41,23 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
-
+uint8_t RxBuffer[20];
+uint8_t TxBuffer[40];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void UARTPlllingMethod();
+void DummyTask();
+void UARTInterruptConfig();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,9 +93,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+uint8_t text[] = "HELLO FIBO";
+HAL_UART_Transmit(&huart2,text,11,10);
+UARTInterruptConfig();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -98,6 +108,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  //UARTPlllingMethod();
+	  DummyTask();
+	  HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_0);
   }
   /* USER CODE END 3 */
 }
@@ -182,6 +195,25 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -197,7 +229,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -205,17 +237,49 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pins : PA0 LD2_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
 
 /* USER CODE BEGIN 4 */
+void UARTPlllingMethod(){
+	HAL_StatusTypeDef HAL_status = HAL_UART_Receive(&huart2, RxBuffer, 10, 10000);
+	if(HAL_status==HAL_OK){
+		RxBuffer[10]='\0';
+		sprintf((char*)TxBuffer,"Received :  %s\r\n",RxBuffer);
+		HAL_UART_Transmit(&huart2, TxBuffer, strlen((char*)TxBuffer), 10);
+	}
+	else if(HAL_status==HAL_TIMEOUT){
+		uint32_t lastCharPos = huart2.RxXferSize-huart2.RxXferCount;
+		RxBuffer[lastCharPos]='\0';
+		sprintf((char*)TxBuffer,"Received TimeOut :  %s\r\n",RxBuffer);
+		HAL_UART_Transmit(&huart2, TxBuffer, strlen((char*)TxBuffer), 10);
 
+	}
+}
+void DummyTask(){
+	static uint32_t timestamp=0;
+	if(HAL_GetTick()>=timestamp){
+		timestamp=HAL_GetTick()+100;
+		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+	}
+}
+void UARTInterruptConfig(){
+	HAL_UART_Receive_DMA(&huart2, RxBuffer, 10);
+}
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+	if(huart==&huart2){
+		RxBuffer[10]='\0';
+		sprintf((char*)TxBuffer,"Received :  %s\r\n",RxBuffer);
+		HAL_UART_Transmit(&huart2, TxBuffer, strlen((char*)TxBuffer), 10);
+		HAL_UART_Receive_DMA(&huart2, RxBuffer, 10);
+	}
+}
 /* USER CODE END 4 */
 
 /**
