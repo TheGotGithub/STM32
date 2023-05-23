@@ -39,16 +39,23 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+SPI_HandleTypeDef hspi3;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+uint8_t SPIRx[10];
+uint8_t SPITx[10];
+uint8_t data;
+uint8_t t1;
+uint8_t t2;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SPI3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -87,8 +94,9 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_SPI3_Init();
   /* USER CODE BEGIN 2 */
-
+  SPITxRx_Setup();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -98,6 +106,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  //SPITxRx_readIO();
+	  SPIWrite();
   }
   /* USER CODE END 3 */
 }
@@ -149,6 +159,44 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief SPI3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI3_Init(void)
+{
+
+  /* USER CODE BEGIN SPI3_Init 0 */
+
+  /* USER CODE END SPI3_Init 0 */
+
+  /* USER CODE BEGIN SPI3_Init 1 */
+
+  /* USER CODE END SPI3_Init 1 */
+  /* SPI3 parameter configuration*/
+  hspi3.Instance = SPI3;
+  hspi3.Init.Mode = SPI_MODE_MASTER;
+  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi3.Init.NSS = SPI_NSS_SOFT;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi3.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI3_Init 2 */
+
+  /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -194,10 +242,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_SET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -212,10 +264,53 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PD2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
 }
 
 /* USER CODE BEGIN 4 */
-
+void SPITxRx_Setup()
+{
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, 0);
+	HAL_Delay(1);
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, 1);
+	HAL_Delay(1);
+}
+void SPITxRx_readIO()
+{
+	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2))
+	{
+		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, 0);
+		SPITx[0] = 0b01000001;
+		SPITx[1] = 0x12;
+		SPITx[2] = 0;
+		//SPITx[3] = 0;
+		HAL_SPI_TransmitReceive_IT(&hspi3, SPITx, SPIRx, 4);
+	}
+}
+void SPIWrite(){
+	if(HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_2))
+		{
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, 0);
+			SPITx[0] = 0b01000000;
+			SPITx[1] = 0x01;
+			SPITx[2] = 0b00010101;
+			SPITx[3] = 0x15;
+			SPITx[4] = 0b11111111;
+			//SPITx[3] = 0;
+			HAL_SPI_TransmitReceive_IT(&hspi3, SPITx, SPIRx, 5);
+		}
+}
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, 1);
+	data=SPIRx[2];
+}
 /* USER CODE END 4 */
 
 /**
