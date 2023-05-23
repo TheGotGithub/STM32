@@ -47,6 +47,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 /* USER CODE BEGIN PV */
 uint8_t RxBuffer[20];
 uint8_t TxBuffer[40];
+uint8_t text[20];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -96,8 +97,10 @@ int main(void)
   MX_DMA_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-uint8_t text[] = "HELLO FIBO";
-HAL_UART_Transmit(&huart2,text,11,10);
+//uint8_t text[] = "HELLO FIBO";
+//HAL_UART_Transmit(&huart2,text,11,10);
+
+
 UARTInterruptConfig();
   /* USER CODE END 2 */
 
